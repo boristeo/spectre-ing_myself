@@ -115,27 +115,18 @@ char leak_byte(const uint8_t *private_data, int index) {
 }
 
 int main() {
-  static const intptr_t PAGE_SIZE = 4096;
-  char private_data[2 * PAGE_SIZE];
-  intptr_t page_boundary_offset = ((intptr_t)private_data) % PAGE_SIZE;
-  if (page_boundary_offset == 0)
-    page_boundary_offset = PAGE_SIZE; // keep lower indices valid
+  constexpr intptr_t PAGE_SIZE = 4096;
+  using TwoPages = typename std::aligned_storage<2 * PAGE_SIZE, PAGE_SIZE>::type;
+  auto two_pages = std::make_unique<TwoPages>(); 
+  auto private_data = reinterpret_cast<uint8_t *>(two_pages.get());
 
-  auto *real_start = private_data + page_boundary_offset;
-  real_start[0] = 'H';
-  real_start[1] = 'e';
-  real_start[2] = 'l';
-  real_start[3] = 'l';
-  real_start[4] = 'o';
-  real_start[5] = '\n';
-  real_start[6] = '\0';
+  auto *real_start = private_data + PAGE_SIZE;
+  std::strcpy((char *)real_start, "Hello\n");
 
-  // Just to demo that kernel level protections don't work
-  if (mprotect((void *)(private_data + PAGE_SIZE - page_boundary_offset),
-               PAGE_SIZE, PROT_NONE) == -1)
+  // Just to demo that kernel level protections do(n't???) work
+  if (mprotect((void *)real_start, PAGE_SIZE, PROT_NONE) == -1)
     throw std::runtime_error("mprotect failed");
 
-  for (auto i = 0; i < 6; ++i) {
-    std::cout << leak_byte((uint8_t *)private_data, page_boundary_offset + i);
-  }
+  for (auto i = 0; i < 6; ++i)
+    std::cout << leak_byte(private_data, PAGE_SIZE + i);
 }
